@@ -1,11 +1,13 @@
 ﻿using ChessChallenge.API;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 public class MyBot : IChessBot
 {
     // Piece values: null, pawn, knight, bishop, rook, queen, king
     int[] pieceValues = { 0, 100, 410, 420, 630, 1200, 2000 };
+    int maxDepth = 2;
 
     public Move Think(Board board, Timer timer)
     {
@@ -91,7 +93,7 @@ public class MyBot : IChessBot
             // Check, it might lead to mate, less so in end game
             if (MoveIsCheck(board, move))
             {
-                moveValue += board.PlyCount <= 30 ? 40: 20;
+                moveValue += board.PlyCount <= 30 ? 40 : 20;
             }
 
             // Castle
@@ -114,7 +116,9 @@ public class MyBot : IChessBot
 
             // If the move is promising and time permits, consider the future carefully
             depthValue = 0;
-            if (depth <= 2 && (depth != 2 || timer.MillisecondsRemaining > 10 * 1000) && (depth != 2 || moveValue >= highestValueMove))
+            if (depth <= maxDepth && (depth != maxDepth ||
+                    (timer.MillisecondsRemaining > 10 * 1000 && moveValue >= highestValueMove)
+                ))
             {
                 // Undo lazy depth check
                 if (board.SquareIsAttackedByOpponent(move.TargetSquare) || board.SquareIsAttackedByOpponent(move.StartSquare))
