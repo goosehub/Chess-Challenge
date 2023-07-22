@@ -10,7 +10,7 @@ namespace ChessChallenge.Example
     {
         // Piece values: null, pawn, knight, bishop, rook, queen, king
         int[] pieceValues = { 0, 100, 410, 420, 630, 1200, 2000 };
-        int maxDepth = 1;
+        int maxDepth = 2;
 
         public Move Think(Board board, Timer timer)
         {
@@ -40,7 +40,7 @@ namespace ChessChallenge.Example
 
                 // Get info
                 Random rng = new();
-                int moveValue = board.PlyCount < 5 ? rng.Next(50) : 0; // RNG for fresh games
+                int moveValue = board.PlyCount < 5 ? rng.Next(20) : 0; // RNG for fresh games
                 Piece movingPiece = board.GetPiece(move.StartSquare);
                 Piece capturedPiece = board.GetPiece(move.TargetSquare);
                 int movingPieceValue = pieceEstimate((int)movingPiece.PieceType, movingPiece);
