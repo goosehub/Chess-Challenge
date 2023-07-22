@@ -38,13 +38,12 @@ public class MyBot : IChessBot
             {
                 highestValueMove += 10000;
                 moveToPlay = move;
-                System.Diagnostics.Debug.WriteLine("Checkmate found at depth: " + depth);
                 break;
             }
 
             // Get info
             Random rng = new();
-            int moveValue = rng.Next(3); // RNG for fresh games
+            int moveValue = board.PlyCount < 5 ? rng.Next(50) : 0; // RNG for fresh games
             Piece movingPiece = board.GetPiece(move.StartSquare);
             Piece capturedPiece = board.GetPiece(move.TargetSquare);
             int movingPieceValue = pieceEstimate((int)movingPiece.PieceType, movingPiece);
@@ -56,19 +55,25 @@ public class MyBot : IChessBot
                 moveValue += 200;
             }
 
-            // Start with captured value
+            // Add captured value
             moveValue += capturedPieceValue;
+
+            // If you see checkmate, that's probably good
+            if (MoveIsCheckmate(board, move) && depth <= 1)
+            {
+                moveValue += 3000;
+            }
 
             // Encourage capture if winning
             if (winning)
             {
-                moveValue += (capturedPieceValue / 50);
+                moveValue += (capturedPieceValue / 100);
             }
 
-            // Avoid draws if winning
-            if (winning && MoveIsDraw(board, move))
+            // Draw value depends on winning vs losing
+            if (MoveIsDraw(board, move))
             {
-                moveValue -= 10000;
+                moveValue += winning ? -100 : 25;
             }
 
             // Push pawns in end game
@@ -109,7 +114,8 @@ public class MyBot : IChessBot
             }
 
             // Lazy depth check by avoiding staying on or targeting attacked squares at end of depth
-            if (board.SquareIsAttackedByOpponent(move.TargetSquare) || board.SquareIsAttackedByOpponent(move.StartSquare))
+            bool dangerousSquare = board.SquareIsAttackedByOpponent(move.TargetSquare) || board.SquareIsAttackedByOpponent(move.StartSquare);
+            if (dangerousSquare)
             {
                 moveValue -= movingPieceValue;
             }
@@ -121,7 +127,7 @@ public class MyBot : IChessBot
                 ))
             {
                 // Undo lazy depth check
-                if (board.SquareIsAttackedByOpponent(move.TargetSquare) || board.SquareIsAttackedByOpponent(move.StartSquare))
+                if (dangerousSquare)
                 {
                     moveValue += movingPieceValue;
                 }
@@ -142,7 +148,7 @@ public class MyBot : IChessBot
         // Debug
         if (true && depth == 0)
         {
-            System.Diagnostics.Debug.WriteLine(moveToPlay.ToString() + "-" + highestValueMove + " | Depth Value: " + depthValue + " | Winning: " + winning);
+            System.Diagnostics.Debug.WriteLine(board.PlyCount + "th turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Depth Value: " + depthValue + " | Winning: " + winning);
         }
 
         return Tuple.Create(moveToPlay, highestValueMove);
