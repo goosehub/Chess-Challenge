@@ -1,5 +1,6 @@
 ﻿using ChessChallenge.API;
 using System;
+using System.Linq;
 
 namespace ChessChallenge.Example
 {
@@ -9,7 +10,7 @@ namespace ChessChallenge.Example
     {
         // Piece values: null, pawn, knight, bishop, rook, queen, king
         int[] pieceValues = { 0, 100, 410, 420, 630, 1200, 2000 };
-        int maxDepth = 2;
+        int maxDepth = 1;
 
         public Move Think(Board board, Timer timer)
         {
@@ -33,15 +34,9 @@ namespace ChessChallenge.Example
             bool winning = whiteValue > blackValue && board.IsWhiteToMove || whiteValue < blackValue && !board.IsWhiteToMove ? true : false;
             int depthValue = 0;
 
-            foreach (Move move in allMoves)
+            Move[] sortedMoves = allMoves.OrderByDescending(thisMove => rankMoveForSorting(board, thisMove)).ToArray();
+            foreach (Move move in sortedMoves)
             {
-                // Always play checkmate in one
-                if (MoveIsCheckmate(board, move) && depth <= 1)
-                {
-                    highestValueMove += 10000;
-                    moveToPlay = move;
-                    break;
-                }
 
                 // Get info
                 Random rng = new();
@@ -61,7 +56,7 @@ namespace ChessChallenge.Example
                 moveValue += capturedPieceValue;
 
                 // If you see checkmate, that's probably good
-                if (MoveIsCheckmate(board, move) && depth <= 1)
+                if (MoveIsCheckmate(board, move))
                 {
                     moveValue += 3000;
                 }
@@ -100,7 +95,7 @@ namespace ChessChallenge.Example
                 // Check, it might lead to mate, less so in end game
                 if (MoveIsCheck(board, move))
                 {
-                    moveValue += board.PlyCount <= 30 ? 40 : 20;
+                    moveValue += board.PlyCount <= 30 ? 60 : 30;
                 }
 
                 // Castle
@@ -150,10 +145,25 @@ namespace ChessChallenge.Example
             // Debug
             if (true && depth == 0)
             {
-                System.Diagnostics.Debug.WriteLine(board.PlyCount + "th turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Depth Value: " + depthValue + " | Winning: " + winning);
+                //System.Diagnostics.Debug.WriteLine(board.PlyCount + "th turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Depth Value: " + depthValue + " | Winning: " + winning);
             }
 
             return Tuple.Create(moveToPlay, highestValueMove);
+        }
+
+        // Compare moves for sorting
+        int rankMoveForSorting(Board board, Move move)
+        {
+            int sortValue = 0;
+            if (MoveIsCheck(board, move) || move.IsCastles)
+            {
+                sortValue += 100;
+            }
+            if (move.CapturePieceType > 0)
+            {
+                sortValue += 50;
+            }
+            return sortValue;
         }
 
         // Estimate value of a piece
