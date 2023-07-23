@@ -29,7 +29,7 @@ public class MyBot : IChessBot
         int highestValueMove = -10000;
         int depthValue = 2;
         PieceList[] pieces = board.GetAllPieceLists();
-        int evaluation = boardEval(pieces);
+        int evaluation = boardEval(board, pieces);
 
         // Sort moves for best candidates first
         Move[] sortedMoves = allMoves.OrderByDescending(thisMove => rankMoveForSorting(board, thisMove)).ToArray();
@@ -40,8 +40,8 @@ public class MyBot : IChessBot
             int moveValue = 0;
             Piece movingPiece = board.GetPiece(move.StartSquare);
             Piece capturedPiece = board.GetPiece(move.TargetSquare);
-            int movingPieceValue = pieceEval(movingPiece);
-            int capturedPieceValue = pieceEval(capturedPiece);
+            int movingPieceValue = pieceEval(board, movingPiece);
+            int capturedPieceValue = pieceEval(board, capturedPiece);
             bool losing = evaluation < -50 && board.IsWhiteToMove || evaluation > 50 && !board.IsWhiteToMove;
 
             // Start with short term eval changes
@@ -83,6 +83,12 @@ public class MyBot : IChessBot
                 moveValue += 1000;
             }
 
+            // Avoid moving flank pawns
+            if (movingPiece.IsPawn && (move.StartSquare.File <= 1 || move.StartSquare.File >= 6))
+            {
+                moveValue -= 20;
+            }
+
             // Draw value depends on winning vs losing
             if (MoveIsDraw(board, move))
             {
@@ -92,13 +98,13 @@ public class MyBot : IChessBot
             // Encourage capture if not losing
             if (!losing)
             {
-                moveValue += (capturedPieceValue / 100);
+                //moveValue += (capturedPieceValue / 100);
             }
 
             // Prefer to move to defended squares
             if (MoveIsDefended(board, move))
             {
-                moveValue += 25;
+                //moveValue += 25;
             }
 
             // Try not to move high value pieces
@@ -119,7 +125,7 @@ public class MyBot : IChessBot
 
             // If the move is promising and time permits, consider the future carefully
             depthValue = 0;
-            bool decentMove = moveValue > highestValueMove && moveValue > 10;
+            bool decentMove = moveValue > highestValueMove;
             if (
                 depth <= maxDepth &&
                 (depth <= maxDepth - 4 || board.PlyCount > 4) &&
@@ -137,15 +143,15 @@ public class MyBot : IChessBot
                 (depth <= maxDepth - 1 || move.IsCapture || previousMoveWasCapture)
                 )
             {
-                if (depth >= 5)
+                if (depth >= 6)
                 {
-                    Debug.WriteLine(depth);
+                    //Debug.WriteLine(depth);
                 }
                 // Undo lazy depth check, but keep some disincentive
                 if (dangerousSquare)
                 {
                     moveValue += movingPieceValue;
-                    moveValue -= 50;
+                    //moveValue -= 50;
                 }
                 board.MakeMove(move);
                 depthValue = BestMove(board, timer, depth + 1, isCheck, move.IsCapture).Item2 * -1;
@@ -171,7 +177,7 @@ public class MyBot : IChessBot
     int rankMoveForSorting(Board board, Move move)
     {
         // Capturing high value pieces is often a good place to start
-        int capturedPieceValue = pieceEval(board.GetPiece(move.TargetSquare));
+        int capturedPieceValue = pieceEval(board, board.GetPiece(move.TargetSquare));
         int sortValue = capturedPieceValue;
 
         // Other signs a move is good
@@ -184,7 +190,7 @@ public class MyBot : IChessBot
     }
 
     // Get simple board eval
-    int boardEval(PieceList[] listings)
+    int boardEval(Board board, PieceList[] listings)
     {
         int eval = 0;
         foreach (PieceList pieceList in listings)
@@ -196,16 +202,17 @@ public class MyBot : IChessBot
             }
             foreach (Piece piece in pieceList)
             {
-                eval+= pieceEval(piece) * (piece.IsWhite ? 1 : -1);
+                eval+= pieceEval(board, piece) * (piece.IsWhite ? 1 : -1);
             }
         }
         return eval;
     }
 
     // Estimate value of a piece
-    int pieceEval(Piece piece = new Piece())
+    int pieceEval(Board board, Piece piece = new Piece())
     {
         int pieceValue = pieceValues[(int)piece.PieceType];
+        Square kingSquare = board.GetKingSquare(!piece.IsWhite);
         if (piece.IsPawn)
         {
             // Pawns better closer to promotion
@@ -225,6 +232,11 @@ public class MyBot : IChessBot
             if ((piece.IsWhite && piece.Square.File == 0) || (!piece.IsWhite && piece.Square.File == 7))
             {
                 pieceValue -= 20;
+            }
+            // Better if in front of king
+            if (piece.Square.File == kingSquare.File)
+            {
+                pieceValue += 50;
             }
         }
         // Enjoy the center
@@ -248,6 +260,27 @@ public class MyBot : IChessBot
             }
 
         }
+        // Piece is lined up with opponnent King
+        if (piece.IsRook || piece.IsQueen)
+        {
+            if (piece.Square.File == kingSquare.File || piece.Square.Rank == kingSquare.Rank)
+            {
+                pieceValue += 50;
+            }
+        }
+        if (Math.Abs(kingSquare.File - piece.Square.File) <= 2 || Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 2)
+        {
+            pieceValue += 30;
+        }
+        if (Math.Abs(kingSquare.File - piece.Square.File) <= 2 && Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 2)
+        {
+            pieceValue += 30;
+        }
+        // Rooks and pawns better in end game
+        if (piece.IsPawn || piece.IsRook)
+        {
+            pieceValue += board.PlyCount / 4;
+        }
         return pieceValue;
     }
 
@@ -255,7 +288,7 @@ public class MyBot : IChessBot
     {
         board.MakeMove(move);
         PieceList[] pieces = board.GetAllPieceLists();
-        int evaluation = boardEval(pieces);
+        int evaluation = boardEval(board, pieces);
         board.UndoMove(move);
         return evaluation;
     }
