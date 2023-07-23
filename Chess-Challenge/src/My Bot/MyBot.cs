@@ -9,7 +9,7 @@ using System.Diagnostics;
 public class MyBot : IChessBot
 {
     int maxDepth = 6;
-    int[] pieceValues = { 0, 100, 410, 420, 630, 1200, 5000 };
+    int[] pieceValues = { 0, 100, 350, 350, 550, 1000, 5000 };
 
     public Move Think(Board board, Timer timer)
     {
@@ -41,15 +41,16 @@ public class MyBot : IChessBot
             Piece capturedPiece = board.GetPiece(move.TargetSquare);
             int movingPieceValue = pieceEval(board, movingPiece);
             int capturedPieceValue = pieceEval(board, capturedPiece);
-            bool losing = evaluation < -50 && board.IsWhiteToMove || evaluation > 50 && !board.IsWhiteToMove;
+            bool losing = evaluation < -200 && board.IsWhiteToMove || evaluation > 200 && !board.IsWhiteToMove;
+            bool winning = evaluation > 200 && board.IsWhiteToMove || evaluation < -200 && !board.IsWhiteToMove;
 
             // Start with short term eval changes
             moveValue = (evaluationAfterMove(board, move, timer) - evaluation) * (board.IsWhiteToMove ? 1 : -1);
 
             // Open with king pawn then knights if reasonable
-            if (board.PlyCount <= 1 && move.StartSquare.File == 4 && move.StartSquare.Rank != 2 && move.StartSquare.Rank != 5)
+            if (board.PlyCount <= 1 && move.StartSquare.File == 4 && move.TargetSquare.Rank != 2 && move.TargetSquare.Rank != 5)
             {
-                moveValue += 1000;
+                moveValue += 50;
             }
             if (depth == 1 && board.PlyCount <= 6 && movingPiece.IsKnight && (move.TargetSquare.File == 2 || move.TargetSquare.File == 5))
             {
@@ -98,8 +99,8 @@ public class MyBot : IChessBot
                 moveValue += losing ? 100 : -50;
             }
 
-            // Encourage capture if not losing
-            if (!losing)
+            // Encourage capture if winning
+            if (!winning)
             {
                 moveValue += (capturedPieceValue / 100);
             }
@@ -116,7 +117,7 @@ public class MyBot : IChessBot
             // Push pawns in end game
             if (movingPiece.IsPawn && board.PlyCount >= 60)
             {
-                moveValue += 25;
+                moveValue += 10;
             }
 
             // Lazy depth check by avoiding staying on or targeting attacked squares at end of depth
@@ -131,7 +132,7 @@ public class MyBot : IChessBot
             bool decentMove = moveValue > highestValueMove;
             if (
                 depth <= maxDepth &&
-                (depth < 3 || board.PlyCount > 4) &&
+                (depth < 3 || board.PlyCount > 6) &&
                 (depth < 3 || timer.MillisecondsRemaining > 5000) &&
                 (depth < 3 || decentMove) &&
                 (depth < 3 || moveValue > 10 || isCheck || previousMoveWasCheck || move.IsCapture || previousMoveWasCapture) &&
@@ -162,8 +163,8 @@ public class MyBot : IChessBot
             }
         }
 
-        //String log = board.PlyCount / 2 + " Turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Eval: " + evaluation + " | Depth Value: " + depthValue;
-        //Debug.WriteLineIf(depth == 1, log);
+        String log = board.PlyCount / 2 + " Turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Eval: " + evaluation + " | Depth Value: " + depthValue;
+        Debug.WriteLineIf(depth == 1, log);
 
         return Tuple.Create(moveToPlay, highestValueMove, evaluation);
     }
@@ -188,20 +189,39 @@ public class MyBot : IChessBot
     int boardEval(Board board, PieceList[] listings)
     {
         int eval = 0;
+        Piece lastPawn = new Piece();
         foreach (PieceList pieceList in listings)
         {
             // Bonus for having Bishop Pair
             if ((int)pieceList.TypeOfPieceInList == 3 && pieceList.Count == 2)
             {
-                eval += 30;
+                eval += 50;
             }
+            // Better with two rooks
             if ((int)pieceList.TypeOfPieceInList == 4 && pieceList.Count == 2)
             {
                 eval += 30;
             }
             foreach (Piece piece in pieceList)
             {
-                eval+= pieceEval(board, piece) * (piece.IsWhite ? 1 : -1);
+                if ((int)pieceList.TypeOfPieceInList == 1)
+                {
+                    if (!lastPawn.IsNull && lastPawn.IsWhite == piece.IsWhite)
+                    {
+                        // Doubled pawns bad
+                        if (lastPawn.Square.File == piece.Square.File)
+                        {
+                            eval -= 10;
+                        }
+                        // Connected pawns good
+                        if (Math.Abs(lastPawn.Square.File - piece.Square.File) == 1 && Math.Abs(lastPawn.Square.Rank - piece.Square.Rank) == 1)
+                        {
+                            eval += 10;
+                        }
+                    }
+                    lastPawn = piece;
+                }
+                eval += pieceEval(board, piece) * (piece.IsWhite ? 1 : -1);
             }
         }
         return eval;
@@ -217,25 +237,26 @@ public class MyBot : IChessBot
             // Pawns better closer to promotion
             if ((piece.IsWhite && piece.Square.Rank == 5) || (!piece.IsWhite && piece.Square.Rank == 2))
             {
-                pieceValue += 100;
+                pieceValue += 50;
             }
             if ((piece.IsWhite && piece.Square.Rank == 6) || (!piece.IsWhite && piece.Square.Rank == 1))
             {
-                pieceValue += 400;
+                pieceValue += 300;
             }
-            // Center pawns better than outside pawns
+            // Center pawns good
             if ((piece.IsWhite && piece.Square.File == 3) || (!piece.IsWhite && piece.Square.File == 4))
             {
                 pieceValue += 20;
             }
-            if ((piece.IsWhite && piece.Square.File == 0) || (!piece.IsWhite && piece.Square.File == 7))
+            // Flank pawns bad
+            if ((piece.IsWhite && piece.Square.File <= 1) || (!piece.IsWhite && piece.Square.File >= 6))
             {
-                pieceValue -= 20;
+                pieceValue -= 10;
             }
             // Better if in front of king
-            if (piece.Square.File == kingSquare.File)
+            if (Math.Abs(piece.Square.File - kingSquare.File) <= 1 && Math.Abs(piece.Square.Rank - kingSquare.Rank) == 1)
             {
-                pieceValue += 50;
+                pieceValue += 10;
             }
         }
         // Enjoy the center
@@ -271,15 +292,18 @@ public class MyBot : IChessBot
                 pieceValue += 20;
             }
         }
+        // Piece is diagnal with opponnent King
+        if (piece.IsBishop || piece.IsQueen)
+        {
+            if (Math.Abs(kingSquare.File - piece.Square.File) == Math.Abs(kingSquare.Rank - piece.Square.Rank))
+            {
+                pieceValue += 20;
+            }
+        }
         // In opponnent King area
         if (Math.Abs(kingSquare.File - piece.Square.File) <= 3 && Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 3)
         {
             pieceValue += 10;
-        }
-        // Rooks and pawns better in end game
-        if (piece.IsPawn || piece.IsRook)
-        {
-            pieceValue += board.PlyCount / 4;
         }
         return pieceValue;
     }

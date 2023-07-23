@@ -8,106 +8,122 @@ namespace ChessChallenge.Example
     // Plays randomly otherwise.
     public class EvilBot : IChessBot
     {
-        // Piece values: null, pawn, knight, bishop, rook, queen, king
-        int[] pieceValues = { 0, 100, 410, 420, 630, 1200, 2000 };
-        int maxDepth = 2;
+        int maxDepth = 6;
+        int[] pieceValues = { 0, 100, 410, 420, 630, 1200, 5000 };
 
         public Move Think(Board board, Timer timer)
         {
-            var moveChoice = BestMove(board, timer, 0);
-            return moveChoice.Item1;
+            return BestMove(board, timer, 1, false, false).Item1;
         }
 
-        public Tuple<Move, int> BestMove(Board board, Timer timer, int depth)
+        public Tuple<Move, int, int> BestMove(Board board, Timer timer, int depth, bool previousMoveWasCheck, bool previousMoveWasCapture)
         {
-            // Prep for loop
+            // Get data and prep for loop
             Move[] allMoves = board.GetLegalMoves();
             if (allMoves.Length == 0)
             {
-                return Tuple.Create(new Move(), 0);
+                return Tuple.Create(new Move(), 0, 0);
             }
             Move moveToPlay = allMoves[0];
-            PieceList[] pieces = board.GetAllPieceLists();
             int highestValueMove = -10000;
-            int whiteValue = (pieces[0].Count * pieceEstimate(1)) + (pieces[1].Count * pieceEstimate(2)) + (pieces[2].Count * pieceEstimate(3)) + (pieces[3].Count * pieceEstimate(4));
-            int blackValue = (pieces[4].Count * pieceEstimate(1)) + (pieces[5].Count * pieceEstimate(2)) + (pieces[6].Count * pieceEstimate(3)) + (pieces[7].Count * pieceEstimate(4));
-            bool winning = whiteValue > blackValue && board.IsWhiteToMove || whiteValue < blackValue && !board.IsWhiteToMove ? true : false;
-            int depthValue = 0;
+            int depthValue = 2;
+            PieceList[] pieces = board.GetAllPieceLists();
+            int evaluation = boardEval(board, pieces);
 
+            // Sort moves for best candidates first
             Move[] sortedMoves = allMoves.OrderByDescending(thisMove => rankMoveForSorting(board, thisMove)).ToArray();
+
             foreach (Move move in sortedMoves)
             {
-
-                // Get info
-                Random rng = new();
-                int moveValue = board.PlyCount < 8 ? rng.Next(50) : 0; // RNG for fresh games
+                // Get data
+                int moveValue = 0;
                 Piece movingPiece = board.GetPiece(move.StartSquare);
                 Piece capturedPiece = board.GetPiece(move.TargetSquare);
-                int movingPieceValue = pieceEstimate((int)movingPiece.PieceType, movingPiece);
-                int capturedPieceValue = pieceEstimate((int)capturedPiece.PieceType, movingPiece);
+                int movingPieceValue = pieceEval(board, movingPiece);
+                int capturedPieceValue = pieceEval(board, capturedPiece);
+                bool losing = evaluation < -50 && board.IsWhiteToMove || evaluation > 50 && !board.IsWhiteToMove;
 
-                // Open with knights with reasonable
-                if (depth == 0 && board.PlyCount <= 3 && movingPiece.IsKnight && (move.TargetSquare.File == 2 || move.TargetSquare.File == 5))
+                // Start with short term eval changes
+                moveValue = (evaluationAfterMove(board, move, timer) - evaluation) * (board.IsWhiteToMove ? 1 : -1);
+
+                // Add a little noise for opening
+                if (board.PlyCount < 8)
                 {
-                    moveValue += 200;
+                    Random rng = new();
+                    moveValue = rng.Next(20) - rng.Next(20);
                 }
 
-                // Add captured value
-                moveValue += capturedPieceValue;
-
-                // If you see checkmate, that's probably good
-                if (MoveIsCheckmate(board, move))
+                // Open with king pawn then knights if reasonable
+                if (board.PlyCount <= 1 && move.StartSquare.File == 4 && move.StartSquare.Rank != 2 && move.StartSquare.Rank != 5)
                 {
-                    moveValue += 3000;
+                    moveValue += 1000;
                 }
-
-                // Encourage capture if winning
-                if (winning)
-                {
-                    moveValue += (capturedPieceValue / 100);
-                }
-
-                // Draw value depends on winning vs losing
-                if (MoveIsDraw(board, move))
-                {
-                    moveValue += winning ? -100 : 25;
-                }
-
-                // Push pawns in end game
-                if (movingPiece.IsPawn && board.PlyCount >= 40)
-                {
-                    moveValue += 25;
-                }
-
-                // Try not to move high value pieces
-                moveValue -= (movingPieceValue / 100);
-
-                // Bias towards center Ranks and Files
-                if (move.TargetSquare.Rank == 3 || move.TargetSquare.Rank == 4 || move.TargetSquare.File == 2 || move.TargetSquare.File == 5)
-                {
-                    moveValue += 5;
-                }
-                if (move.TargetSquare.File == 3 || move.TargetSquare.File == 4)
+                if (depth == 1 && board.PlyCount <= 6 && movingPiece.IsKnight && (move.TargetSquare.File == 2 || move.TargetSquare.File == 5))
                 {
                     moveValue += 10;
                 }
 
-                // Check, it might lead to mate, less so in end game
-                if (MoveIsCheck(board, move))
+                // If you see checkmate, that's probably good
+                if (MoveIsCheckmate(board, move))
                 {
-                    moveValue += board.PlyCount <= 30 ? 60 : 30;
+                    moveValue += 9000;
                 }
 
-                // Castle
+                // Check, it might lead to mate, less so in end game
+                bool isCheck = MoveIsCheck(board, move);
+                if (isCheck)
+                {
+                    moveValue += board.PlyCount <= 60 ? 30 : 10;
+                }
+
+                // Castling
                 if (move.IsCastles)
                 {
                     moveValue += 50;
+                }
+                // Preserve castling
+                else if (board.PlyCount <= 10 && movingPiece.IsKing || movingPiece.IsRook)
+                {
+                    moveValue -= 30;
                 }
 
                 // Promote to queen
                 if ((int)move.PromotionPieceType == 5)
                 {
                     moveValue += 1000;
+                }
+
+                // Avoid moving flank pawns
+                if (movingPiece.IsPawn && (move.StartSquare.File <= 1 || move.StartSquare.File >= 6))
+                {
+                    moveValue -= 20;
+                }
+
+                // Draw value depends on winning vs losing
+                if (MoveIsDraw(board, move))
+                {
+                    moveValue += losing ? 100 : -50;
+                }
+
+                // Encourage capture if not losing
+                if (!losing)
+                {
+                    moveValue += (capturedPieceValue / 100);
+                }
+
+                // Prefer to move to defended squares
+                if (MoveIsDefended(board, move))
+                {
+                    moveValue += 5;
+                }
+
+                // Try not to move high value pieces
+                moveValue -= (movingPieceValue / 100);
+
+                // Push pawns in end game
+                if (movingPiece.IsPawn && board.PlyCount >= 60)
+                {
+                    moveValue += 25;
                 }
 
                 // Lazy depth check by avoiding staying on or targeting attacked squares at end of depth
@@ -119,17 +135,28 @@ namespace ChessChallenge.Example
 
                 // If the move is promising and time permits, consider the future carefully
                 depthValue = 0;
-                if (depth <= maxDepth && (depth != maxDepth ||
-                        (timer.MillisecondsRemaining > 10 * 1000 && moveValue >= highestValueMove)
-                    ))
+                bool decentMove = moveValue > highestValueMove;
+                if (
+                    depth <= maxDepth &&
+                    (depth < 3 || board.PlyCount > 4) &&
+                    (depth < 3 || timer.MillisecondsRemaining > 5000) &&
+                    (depth < 3 || decentMove) &&
+                    (depth < 3 || moveValue > 10 || isCheck || previousMoveWasCheck || move.IsCapture || previousMoveWasCapture) &&
+                    (depth < 4 || decentMove) &&
+                    (depth < 4 || isCheck || previousMoveWasCheck) &&
+                    (depth < 4 || move.IsCapture || previousMoveWasCapture)
+                    )
                 {
-                    // Undo lazy depth check
+                    // Undo lazy depth check, but keep some disincentive
                     if (dangerousSquare)
                     {
                         moveValue += movingPieceValue;
+                        moveValue -= 10;
                     }
+
+                    // See what the future holds
                     board.MakeMove(move);
-                    depthValue = BestMove(board, timer, depth + 1).Item2 * -1;
+                    depthValue = BestMove(board, timer, depth + 1, isCheck, move.IsCapture).Item2 * -1;
                     moveValue += depthValue;
                     board.UndoMove(move);
                 }
@@ -142,47 +169,136 @@ namespace ChessChallenge.Example
                 }
             }
 
-            // Debug
-            if (true && depth == 0)
-            {
-                //System.Diagnostics.Debug.WriteLine(board.PlyCount + "th turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Depth Value: " + depthValue + " | Winning: " + winning);
-            }
+            //String log = board.PlyCount / 2 + " Turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Eval: " + evaluation + " | Depth Value: " + depthValue;
+            //Debug.WriteLineIf(depth == 1, log);
 
-            return Tuple.Create(moveToPlay, highestValueMove);
+            return Tuple.Create(moveToPlay, highestValueMove, evaluation);
         }
 
         // Compare moves for sorting
         int rankMoveForSorting(Board board, Move move)
         {
-            int sortValue = 0;
+            // Capturing high value pieces is often a good place to start
+            int capturedPieceValue = pieceEval(board, board.GetPiece(move.TargetSquare));
+            int sortValue = capturedPieceValue;
+
+            // Other signs a move is good
             if (MoveIsCheck(board, move) || move.IsCastles)
             {
                 sortValue += 100;
             }
-            if (move.CapturePieceType > 0)
-            {
-                sortValue += 50;
-            }
+
             return sortValue;
         }
 
-        // Estimate value of a piece
-        int pieceEstimate(int pieceIndex, Piece piece = new Piece())
+        // Get simple board eval
+        int boardEval(Board board, PieceList[] listings)
         {
-            int pieceValue = pieceValues[pieceIndex];
-            if (!piece.IsNull)
+            int eval = 0;
+            foreach (PieceList pieceList in listings)
             {
-                // Pawns close to promotion are more valuable
-                if (piece.IsPawn && ((piece.IsWhite && piece.Square.Rank == 5) || (!piece.IsWhite && piece.Square.Rank == 2)))
+                // Bonus for having Bishop Pair
+                if ((int)pieceList.TypeOfPieceInList == 3 && pieceList.Count == 2)
+                {
+                    eval += 30;
+                }
+                if ((int)pieceList.TypeOfPieceInList == 4 && pieceList.Count == 2)
+                {
+                    eval += 30;
+                }
+                foreach (Piece piece in pieceList)
+                {
+                    eval += pieceEval(board, piece) * (piece.IsWhite ? 1 : -1);
+                }
+            }
+            return eval;
+        }
+
+        // Estimate value of a piece
+        int pieceEval(Board board, Piece piece = new Piece())
+        {
+            int pieceValue = pieceValues[(int)piece.PieceType];
+            Square kingSquare = board.GetKingSquare(!piece.IsWhite);
+            if (piece.IsPawn)
+            {
+                // Pawns better closer to promotion
+                if ((piece.IsWhite && piece.Square.Rank == 5) || (!piece.IsWhite && piece.Square.Rank == 2))
                 {
                     pieceValue += 100;
                 }
-                if (piece.IsPawn && ((piece.IsWhite && piece.Square.Rank == 6) || (!piece.IsWhite && piece.Square.Rank == 1)))
+                if ((piece.IsWhite && piece.Square.Rank == 6) || (!piece.IsWhite && piece.Square.Rank == 1))
                 {
                     pieceValue += 400;
                 }
+                // Center pawns better than outside pawns
+                if ((piece.IsWhite && piece.Square.File == 3) || (!piece.IsWhite && piece.Square.File == 4))
+                {
+                    pieceValue += 20;
+                }
+                if ((piece.IsWhite && piece.Square.File == 0) || (!piece.IsWhite && piece.Square.File == 7))
+                {
+                    pieceValue -= 20;
+                }
+                // Better if in front of king
+                if (piece.Square.File == kingSquare.File)
+                {
+                    pieceValue += 50;
+                }
+            }
+            // Enjoy the center
+            if (!piece.IsKing)
+            {
+                if (piece.Square.Rank == 3 || piece.Square.Rank == 4 || piece.Square.File == 2 || piece.Square.File == 5)
+                {
+                    pieceValue += 10;
+                }
+                if (piece.Square.File == 3 || piece.Square.File == 4)
+                {
+                    pieceValue += 20;
+                }
+            }
+            // Knights on the rim are dim
+            if (piece.IsKnight)
+            {
+                if (piece.Square.Rank == 0 || piece.Square.Rank == 7 || piece.Square.File == 0 || piece.Square.File == 7)
+                {
+                    pieceValue -= 30;
+                }
+
+            }
+            // Piece is lined up with opponnent King
+            if (piece.IsRook || piece.IsQueen)
+            {
+                if (piece.Square.File == kingSquare.File || piece.Square.Rank == kingSquare.Rank)
+                {
+                    pieceValue += 40;
+                }
+                if (Math.Abs(kingSquare.File - piece.Square.File) <= 1 || Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 1)
+                {
+                    pieceValue += 20;
+                }
+            }
+            // In opponnent King area
+            if (Math.Abs(kingSquare.File - piece.Square.File) <= 3 && Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 3)
+            {
+                pieceValue += 10;
+            }
+            // Rooks and pawns better in end game
+            if (piece.IsPawn || piece.IsRook)
+            {
+                pieceValue += board.PlyCount / 4;
             }
             return pieceValue;
+        }
+
+        // Get evaluation after move is made
+        int evaluationAfterMove(Board board, Move move, Timer timer)
+        {
+            board.MakeMove(move);
+            PieceList[] pieces = board.GetAllPieceLists();
+            int evaluation = boardEval(board, pieces);
+            board.UndoMove(move);
+            return evaluation;
         }
 
         // Test if this move gives draw
@@ -210,6 +326,15 @@ namespace ChessChallenge.Example
             bool isMate = board.IsInCheckmate();
             board.UndoMove(move);
             return isMate;
+        }
+
+        // Test if this move goes to defended square
+        bool MoveIsDefended(Board board, Move move)
+        {
+            board.MakeMove(move);
+            bool isDefended = board.SquareIsAttackedByOpponent(move.TargetSquare);
+            board.UndoMove(move);
+            return isDefended;
         }
     }
 }
