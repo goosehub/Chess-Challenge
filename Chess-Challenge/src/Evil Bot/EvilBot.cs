@@ -8,7 +8,7 @@ namespace ChessChallenge.Example
     // Plays randomly otherwise.
     public class EvilBot : IChessBot
     {
-        int maxDepth = 6;
+        int maxDepth = 5;
         int[] pieceValues = { 0, 100, 410, 420, 630, 1200, 5000 };
 
         public Move Think(Board board, Timer timer)

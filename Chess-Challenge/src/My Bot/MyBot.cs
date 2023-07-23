@@ -9,14 +9,14 @@ using System.Diagnostics;
 public class MyBot : IChessBot
 {
     int maxDepth = 6;
-    int[] pieceValues = { 0, 100, 350, 350, 550, 1000, 5000 };
+    int[] pieceValues = { 0, 100, 350, 350, 600, 1200, 5000 };
 
     public Move Think(Board board, Timer timer)
     {
-        return BestMove(board, timer, 1, false, false).Item1;
+        return BestMove(board, timer, 1, false, false, false).Item1;
     }
 
-    public Tuple<Move, int, int> BestMove(Board board, Timer timer, int depth, bool previousMoveWasCheck, bool previousMoveWasCapture)
+    public Tuple<Move, int, int> BestMove(Board board, Timer timer, int depth, bool previousMoveWasCheck, bool previousMoveWasCapture, bool previousMoveWasPieceCapture)
     {
         // Get data and prep for loop
         Move[] allMoves = board.GetLegalMoves();
@@ -67,7 +67,7 @@ public class MyBot : IChessBot
             bool isCheck = MoveIsCheck(board, move);
             if (isCheck)
             {
-                moveValue += board.PlyCount <= 60 ? 30 : 10;
+                moveValue += board.PlyCount <= 60 ? 20 : 10;
             }
 
             // Castling
@@ -96,7 +96,7 @@ public class MyBot : IChessBot
             // Draw value depends on winning vs losing
             if (MoveIsDraw(board, move))
             {
-                moveValue += losing ? 100 : -50;
+                moveValue += losing ? 1000 : -100;
             }
 
             // Encourage capture if winning
@@ -129,18 +129,22 @@ public class MyBot : IChessBot
 
             // If the move is promising and time permits, consider the future carefully
             depthValue = 0;
-            bool decentMove = moveValue > highestValueMove;
+            bool decentMove = moveValue + 100 > highestValueMove;
+            bool bestMove = moveValue > highestValueMove;
+            bool pieceCapture = move.IsCapture && !capturedPiece.IsPawn;
             if (
                 depth <= maxDepth &&
                 (depth < 3 || board.PlyCount > 6) &&
                 (depth < 3 || timer.MillisecondsRemaining > 5000) &&
                 (depth < 3 || decentMove) &&
-                (depth < 3 || moveValue > 10 || isCheck || previousMoveWasCheck || move.IsCapture || previousMoveWasCapture) &&
-                (depth < 4 || decentMove) &&
-                (depth < 4 || isCheck || previousMoveWasCheck) &&
-                (depth < 4 || move.IsCapture || previousMoveWasCapture)
+                (depth < 3 || isCheck || previousMoveWasCheck || (pieceCapture && previousMoveWasPieceCapture)) &&
+                (depth < 5 || isCheck || previousMoveWasCheck)
                 )
             {
+                if (depth == maxDepth)
+                {
+                    //Debug.WriteLine(depth);
+                }
                 // Undo lazy depth check, but keep some disincentive
                 if (dangerousSquare)
                 {
@@ -150,7 +154,7 @@ public class MyBot : IChessBot
 
                 // See what the future holds
                 board.MakeMove(move);
-                depthValue = BestMove(board, timer, depth + 1, isCheck, move.IsCapture).Item2 * -1;
+                depthValue = BestMove(board, timer, depth + 1, isCheck, move.IsCapture, pieceCapture).Item2 * -1;
                 moveValue += depthValue;
                 board.UndoMove(move);
             }
@@ -256,7 +260,7 @@ public class MyBot : IChessBot
             // Better if in front of king
             if (Math.Abs(piece.Square.File - kingSquare.File) <= 1 && Math.Abs(piece.Square.Rank - kingSquare.Rank) == 1)
             {
-                pieceValue += 10;
+                pieceValue += 20;
             }
         }
         // Enjoy the center
