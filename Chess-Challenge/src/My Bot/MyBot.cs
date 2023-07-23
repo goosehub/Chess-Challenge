@@ -131,7 +131,7 @@ public class MyBot : IChessBot
                 (depth <= maxDepth - 4 || board.PlyCount > 4) &&
                 (depth <= maxDepth - 4 || timer.MillisecondsRemaining > 5000) &&
                 (depth <= maxDepth - 4 || decentMove) &&
-                (depth <= maxDepth - 4 || isCheck || previousMoveWasCheck || move.IsCapture || previousMoveWasCapture) &&
+                (depth <= maxDepth - 4 || moveValue > 10 || isCheck || previousMoveWasCheck || move.IsCapture || previousMoveWasCapture) &&
                 (depth <= maxDepth - 3 || decentMove) &&
                 (depth <= maxDepth - 3 || isCheck || previousMoveWasCheck) &&
                 (depth <= maxDepth - 3 || move.IsCapture || previousMoveWasCapture) &&
@@ -271,14 +271,15 @@ public class MyBot : IChessBot
             {
                 pieceValue += 50;
             }
+            if (Math.Abs(kingSquare.File - piece.Square.File) <= 1 || Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 1)
+            {
+                pieceValue += 30;
+            }
         }
-        if (Math.Abs(kingSquare.File - piece.Square.File) <= 2 || Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 2)
+        // In opponnent King area
+        if (Math.Abs(kingSquare.File - piece.Square.File) <= 3 && Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 3)
         {
-            pieceValue += 30;
-        }
-        if (Math.Abs(kingSquare.File - piece.Square.File) <= 2 && Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 2)
-        {
-            pieceValue += 30;
+            pieceValue += 10;
         }
         // Rooks and pawns better in end game
         if (piece.IsPawn || piece.IsRook)
