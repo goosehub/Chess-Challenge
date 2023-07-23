@@ -13,8 +13,7 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
-        var moveChoice = BestMove(board, timer, 1, false, false);
-        return moveChoice.Item1;
+        return BestMove(board, timer, 1, false, false).Item1;
     }
 
     public Tuple<Move, int, int> BestMove(Board board, Timer timer, int depth, bool previousMoveWasCheck, bool previousMoveWasCapture)
@@ -47,10 +46,14 @@ public class MyBot : IChessBot
             // Start with short term eval changes
             moveValue = (evaluationAfterMove(board, move, timer) - evaluation) * (board.IsWhiteToMove ? 1 : -1);
 
-            // Open with knights with reasonable
-            if (depth == 1 && board.PlyCount <= 3 && movingPiece.IsKnight && (move.TargetSquare.File == 2 || move.TargetSquare.File == 5))
+            // Open with king pawn then knights if reasonable
+            if (board.PlyCount <= 1 && move.StartSquare.File == 4 && move.StartSquare.Rank != 2 && move.StartSquare.Rank != 5)
             {
-                moveValue += 100;
+                moveValue += 1000;
+            }
+            if (depth == 1 && board.PlyCount <= 6 && movingPiece.IsKnight && (move.TargetSquare.File == 2 || move.TargetSquare.File == 5))
+            {
+                moveValue += 10;
             }
 
             // If you see checkmate, that's probably good
@@ -128,31 +131,23 @@ public class MyBot : IChessBot
             bool decentMove = moveValue > highestValueMove;
             if (
                 depth <= maxDepth &&
-                (depth <= maxDepth - 4 || board.PlyCount > 4) &&
-                (depth <= maxDepth - 4 || timer.MillisecondsRemaining > 5000) &&
-                (depth <= maxDepth - 4 || decentMove) &&
-                (depth <= maxDepth - 4 || moveValue > 10 || isCheck || previousMoveWasCheck || move.IsCapture || previousMoveWasCapture) &&
-                (depth <= maxDepth - 3 || decentMove) &&
-                (depth <= maxDepth - 3 || isCheck || previousMoveWasCheck) &&
-                (depth <= maxDepth - 3 || move.IsCapture || previousMoveWasCapture) &&
-                (depth <= maxDepth - 2 || decentMove) &&
-                (depth <= maxDepth - 2 || isCheck || previousMoveWasCheck) &&
-                (depth <= maxDepth - 2 || move.IsCapture || previousMoveWasCapture) &&
-                (depth <= maxDepth - 1 || decentMove) &&
-                (depth <= maxDepth - 1 || isCheck || previousMoveWasCheck) &&
-                (depth <= maxDepth - 1 || move.IsCapture || previousMoveWasCapture)
+                (depth < 3 || board.PlyCount > 4) &&
+                (depth < 3 || timer.MillisecondsRemaining > 5000) &&
+                (depth < 3 || decentMove) &&
+                (depth < 3 || moveValue > 10 || isCheck || previousMoveWasCheck || move.IsCapture || previousMoveWasCapture) &&
+                (depth < 4 || decentMove) &&
+                (depth < 4 || isCheck || previousMoveWasCheck) &&
+                (depth < 4 || move.IsCapture || previousMoveWasCapture)
                 )
             {
-                if (depth >= maxDepth)
-                {
-                    //Debug.WriteLine(depth);
-                }
                 // Undo lazy depth check, but keep some disincentive
                 if (dangerousSquare)
                 {
                     moveValue += movingPieceValue;
                     moveValue -= 10;
                 }
+
+                // See what the future holds
                 board.MakeMove(move);
                 depthValue = BestMove(board, timer, depth + 1, isCheck, move.IsCapture).Item2 * -1;
                 moveValue += depthValue;
@@ -167,8 +162,8 @@ public class MyBot : IChessBot
             }
         }
 
-        String log = board.PlyCount / 2 + " Turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Eval: " + evaluation + " | Depth Value: " + depthValue;
-        Debug.WriteLineIf(depth == 1, log);
+        //String log = board.PlyCount / 2 + " Turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Eval: " + evaluation + " | Depth Value: " + depthValue;
+        //Debug.WriteLineIf(depth == 1, log);
 
         return Tuple.Create(moveToPlay, highestValueMove, evaluation);
     }
@@ -255,9 +250,9 @@ public class MyBot : IChessBot
                 pieceValue += 20;
             }
         }
+        // Knights on the rim are dim
         if (piece.IsKnight)
         {
-            // Knight on the rim is dim
             if (piece.Square.Rank == 0 || piece.Square.Rank == 7 || piece.Square.File == 0 || piece.Square.File == 7)
             {
                 pieceValue -= 30;
@@ -269,11 +264,11 @@ public class MyBot : IChessBot
         {
             if (piece.Square.File == kingSquare.File || piece.Square.Rank == kingSquare.Rank)
             {
-                pieceValue += 50;
+                pieceValue += 40;
             }
             if (Math.Abs(kingSquare.File - piece.Square.File) <= 1 || Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 1)
             {
-                pieceValue += 30;
+                pieceValue += 20;
             }
         }
         // In opponnent King area
@@ -289,6 +284,7 @@ public class MyBot : IChessBot
         return pieceValue;
     }
 
+    // Get evaluation after move is made
     int evaluationAfterMove(Board board, Move move, Timer timer)
     {
         board.MakeMove(move);
@@ -325,7 +321,7 @@ public class MyBot : IChessBot
         return isMate;
     }
 
-    // Test if this move gives checkmate
+    // Test if this move goes to defended square
     bool MoveIsDefended(Board board, Move move)
     {
         board.MakeMove(move);
