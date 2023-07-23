@@ -56,14 +56,14 @@ public class MyBot : IChessBot
             // If you see checkmate, that's probably good
             if (MoveIsCheckmate(board, move))
             {
-                moveValue += 3000;
+                moveValue += 9000;
             }
 
             // Check, it might lead to mate, less so in end game
             bool isCheck = MoveIsCheck(board, move);
             if (isCheck)
             {
-                moveValue += board.PlyCount <= 30 ? 60 : 30;
+                moveValue += board.PlyCount <= 60 ? 30 : 10;
             }
 
             // Castling
@@ -98,20 +98,20 @@ public class MyBot : IChessBot
             // Encourage capture if not losing
             if (!losing)
             {
-                //moveValue += (capturedPieceValue / 100);
+                moveValue += (capturedPieceValue / 100);
             }
 
             // Prefer to move to defended squares
             if (MoveIsDefended(board, move))
             {
-                //moveValue += 25;
+                moveValue += 5;
             }
 
             // Try not to move high value pieces
             moveValue -= (movingPieceValue / 100);
 
             // Push pawns in end game
-            if (movingPiece.IsPawn && board.PlyCount >= 40)
+            if (movingPiece.IsPawn && board.PlyCount >= 60)
             {
                 moveValue += 25;
             }
@@ -143,7 +143,7 @@ public class MyBot : IChessBot
                 (depth <= maxDepth - 1 || move.IsCapture || previousMoveWasCapture)
                 )
             {
-                if (depth >= 6)
+                if (depth >= maxDepth)
                 {
                     //Debug.WriteLine(depth);
                 }
@@ -151,7 +151,7 @@ public class MyBot : IChessBot
                 if (dangerousSquare)
                 {
                     moveValue += movingPieceValue;
-                    //moveValue -= 50;
+                    moveValue -= 10;
                 }
                 board.MakeMove(move);
                 depthValue = BestMove(board, timer, depth + 1, isCheck, move.IsCapture).Item2 * -1;
@@ -197,6 +197,10 @@ public class MyBot : IChessBot
         {
             // Bonus for having Bishop Pair
             if ((int)pieceList.TypeOfPieceInList == 3 && pieceList.Count == 2)
+            {
+                eval += 30;
+            }
+            if ((int)pieceList.TypeOfPieceInList == 4 && pieceList.Count == 2)
             {
                 eval += 30;
             }

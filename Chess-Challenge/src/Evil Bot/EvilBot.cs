@@ -40,7 +40,7 @@ namespace ChessChallenge.Example
 
                 // Get info
                 Random rng = new();
-                int moveValue = board.PlyCount < 5 ? rng.Next(20) : 0; // RNG for fresh games
+                int moveValue = board.PlyCount < 8 ? rng.Next(50) : 0; // RNG for fresh games
                 Piece movingPiece = board.GetPiece(move.StartSquare);
                 Piece capturedPiece = board.GetPiece(move.TargetSquare);
                 int movingPieceValue = pieceEstimate((int)movingPiece.PieceType, movingPiece);
