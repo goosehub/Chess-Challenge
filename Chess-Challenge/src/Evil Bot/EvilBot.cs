@@ -1,5 +1,6 @@
 ﻿using ChessChallenge.API;
 using System;
+using System.Diagnostics;
 using System.Linq;
 
 namespace ChessChallenge.Example
@@ -8,15 +9,15 @@ namespace ChessChallenge.Example
     // Plays randomly otherwise.
     public class EvilBot : IChessBot
     {
-        int maxDepth = 5;
-        int[] pieceValues = { 0, 100, 410, 420, 630, 1200, 5000 };
+        int maxDepth = 6;
+        int[] pieceValues = { 0, 100, 350, 350, 600, 1200, 5000 };
 
         public Move Think(Board board, Timer timer)
         {
-            return BestMove(board, timer, 1, false, false).Item1;
+            return BestMove(board, timer, 1, false, false, false).Item1;
         }
 
-        public Tuple<Move, int, int> BestMove(Board board, Timer timer, int depth, bool previousMoveWasCheck, bool previousMoveWasCapture)
+        public Tuple<Move, int, int> BestMove(Board board, Timer timer, int depth, bool previousMoveWasCheck, bool previousMoveWasCapture, bool previousMoveWasPieceCapture)
         {
             // Get data and prep for loop
             Move[] allMoves = board.GetLegalMoves();
@@ -37,26 +38,25 @@ namespace ChessChallenge.Example
             {
                 // Get data
                 int moveValue = 0;
+                if (board.PlyCount < 10)
+                {
+                    Random rng = new();
+                    moveValue = rng.Next(5);
+                }
                 Piece movingPiece = board.GetPiece(move.StartSquare);
                 Piece capturedPiece = board.GetPiece(move.TargetSquare);
                 int movingPieceValue = pieceEval(board, movingPiece);
                 int capturedPieceValue = pieceEval(board, capturedPiece);
-                bool losing = evaluation < -50 && board.IsWhiteToMove || evaluation > 50 && !board.IsWhiteToMove;
+                bool losing = evaluation < -200 && board.IsWhiteToMove || evaluation > 200 && !board.IsWhiteToMove;
+                bool winning = evaluation > 200 && board.IsWhiteToMove || evaluation < -200 && !board.IsWhiteToMove;
 
                 // Start with short term eval changes
-                moveValue = (evaluationAfterMove(board, move, timer) - evaluation) * (board.IsWhiteToMove ? 1 : -1);
-
-                // Add a little noise for opening
-                if (board.PlyCount < 8)
-                {
-                    Random rng = new();
-                    moveValue = rng.Next(20) - rng.Next(20);
-                }
+                moveValue += (evaluationAfterMove(board, move, timer) - evaluation) * (board.IsWhiteToMove ? 1 : -1);
 
                 // Open with king pawn then knights if reasonable
-                if (board.PlyCount <= 1 && move.StartSquare.File == 4 && move.StartSquare.Rank != 2 && move.StartSquare.Rank != 5)
+                if (board.PlyCount <= 1 && move.StartSquare.File == 4 && move.TargetSquare.Rank != 2 && move.TargetSquare.Rank != 5)
                 {
-                    moveValue += 1000;
+                    moveValue += 50;
                 }
                 if (depth == 1 && board.PlyCount <= 6 && movingPiece.IsKnight && (move.TargetSquare.File == 2 || move.TargetSquare.File == 5))
                 {
@@ -73,7 +73,7 @@ namespace ChessChallenge.Example
                 bool isCheck = MoveIsCheck(board, move);
                 if (isCheck)
                 {
-                    moveValue += board.PlyCount <= 60 ? 30 : 10;
+                    moveValue += board.PlyCount <= 60 ? 20 : 10;
                 }
 
                 // Castling
@@ -102,11 +102,11 @@ namespace ChessChallenge.Example
                 // Draw value depends on winning vs losing
                 if (MoveIsDraw(board, move))
                 {
-                    moveValue += losing ? 100 : -50;
+                    moveValue += losing ? 100 : -100;
                 }
 
-                // Encourage capture if not losing
-                if (!losing)
+                // Encourage capture if winning
+                if (!winning)
                 {
                     moveValue += (capturedPieceValue / 100);
                 }
@@ -123,7 +123,7 @@ namespace ChessChallenge.Example
                 // Push pawns in end game
                 if (movingPiece.IsPawn && board.PlyCount >= 60)
                 {
-                    moveValue += 25;
+                    moveValue += 20;
                 }
 
                 // Lazy depth check by avoiding staying on or targeting attacked squares at end of depth
@@ -135,18 +135,22 @@ namespace ChessChallenge.Example
 
                 // If the move is promising and time permits, consider the future carefully
                 depthValue = 0;
-                bool decentMove = moveValue > highestValueMove;
+                bool decentMove = moveValue + 200 > highestValueMove;
+                bool bestMove = moveValue > highestValueMove;
+                bool pieceCapture = move.IsCapture && !capturedPiece.IsPawn;
                 if (
                     depth <= maxDepth &&
-                    (depth < 3 || board.PlyCount > 4) &&
+                    (depth < 3 || board.PlyCount > 6) &&
                     (depth < 3 || timer.MillisecondsRemaining > 5000) &&
                     (depth < 3 || decentMove) &&
-                    (depth < 3 || moveValue > 10 || isCheck || previousMoveWasCheck || move.IsCapture || previousMoveWasCapture) &&
-                    (depth < 4 || decentMove) &&
-                    (depth < 4 || isCheck || previousMoveWasCheck) &&
-                    (depth < 4 || move.IsCapture || previousMoveWasCapture)
+                    (depth < 3 || isCheck || previousMoveWasCheck || (pieceCapture && previousMoveWasPieceCapture)) &&
+                    (depth < 5 || isCheck || previousMoveWasCheck)
                     )
                 {
+                    if (depth == maxDepth)
+                    {
+                        //Debug.WriteLine(depth);
+                    }
                     // Undo lazy depth check, but keep some disincentive
                     if (dangerousSquare)
                     {
@@ -156,7 +160,7 @@ namespace ChessChallenge.Example
 
                     // See what the future holds
                     board.MakeMove(move);
-                    depthValue = BestMove(board, timer, depth + 1, isCheck, move.IsCapture).Item2 * -1;
+                    depthValue = BestMove(board, timer, depth + 1, isCheck, move.IsCapture, pieceCapture).Item2 * -1;
                     moveValue += depthValue;
                     board.UndoMove(move);
                 }
@@ -169,7 +173,7 @@ namespace ChessChallenge.Example
                 }
             }
 
-            //String log = board.PlyCount / 2 + " Turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Eval: " + evaluation + " | Depth Value: " + depthValue;
+            //String log = board.PlyCount + " Ply: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Eval: " + evaluation + " | Depth Value: " + depthValue + " Time: " + (timer.MillisecondsRemaining / 1000);
             //Debug.WriteLineIf(depth == 1, log);
 
             return Tuple.Create(moveToPlay, highestValueMove, evaluation);
@@ -195,19 +199,38 @@ namespace ChessChallenge.Example
         int boardEval(Board board, PieceList[] listings)
         {
             int eval = 0;
+            Piece lastPawn = new Piece();
             foreach (PieceList pieceList in listings)
             {
                 // Bonus for having Bishop Pair
                 if ((int)pieceList.TypeOfPieceInList == 3 && pieceList.Count == 2)
                 {
-                    eval += 30;
+                    eval += 50;
                 }
+                // Better with two rooks
                 if ((int)pieceList.TypeOfPieceInList == 4 && pieceList.Count == 2)
                 {
                     eval += 30;
                 }
                 foreach (Piece piece in pieceList)
                 {
+                    if ((int)pieceList.TypeOfPieceInList == 1)
+                    {
+                        if (!lastPawn.IsNull && lastPawn.IsWhite == piece.IsWhite)
+                        {
+                            // Doubled pawns bad
+                            if (lastPawn.Square.File == piece.Square.File)
+                            {
+                                eval -= 10;
+                            }
+                            // Connected pawns good
+                            if (Math.Abs(lastPawn.Square.File - piece.Square.File) == 1 && Math.Abs(lastPawn.Square.Rank - piece.Square.Rank) == 1)
+                            {
+                                eval += 10;
+                            }
+                        }
+                        lastPawn = piece;
+                    }
                     eval += pieceEval(board, piece) * (piece.IsWhite ? 1 : -1);
                 }
             }
@@ -224,25 +247,26 @@ namespace ChessChallenge.Example
                 // Pawns better closer to promotion
                 if ((piece.IsWhite && piece.Square.Rank == 5) || (!piece.IsWhite && piece.Square.Rank == 2))
                 {
-                    pieceValue += 100;
+                    pieceValue += 50;
                 }
                 if ((piece.IsWhite && piece.Square.Rank == 6) || (!piece.IsWhite && piece.Square.Rank == 1))
                 {
-                    pieceValue += 400;
+                    pieceValue += 300;
                 }
-                // Center pawns better than outside pawns
+                // Center pawns good
                 if ((piece.IsWhite && piece.Square.File == 3) || (!piece.IsWhite && piece.Square.File == 4))
                 {
                     pieceValue += 20;
                 }
-                if ((piece.IsWhite && piece.Square.File == 0) || (!piece.IsWhite && piece.Square.File == 7))
+                // Flank pawns bad
+                if ((piece.IsWhite && piece.Square.File <= 1) || (!piece.IsWhite && piece.Square.File >= 6))
                 {
-                    pieceValue -= 20;
+                    pieceValue -= 10;
                 }
                 // Better if in front of king
-                if (piece.Square.File == kingSquare.File)
+                if (Math.Abs(piece.Square.File - kingSquare.File) <= 1 && Math.Abs(piece.Square.Rank - kingSquare.Rank) == 1)
                 {
-                    pieceValue += 50;
+                    pieceValue += 20;
                 }
             }
             // Enjoy the center
@@ -278,15 +302,18 @@ namespace ChessChallenge.Example
                     pieceValue += 20;
                 }
             }
+            // Piece is diagnal with opponnent King
+            if (piece.IsBishop || piece.IsQueen)
+            {
+                if (Math.Abs(kingSquare.File - piece.Square.File) == Math.Abs(kingSquare.Rank - piece.Square.Rank))
+                {
+                    pieceValue += 20;
+                }
+            }
             // In opponnent King area
             if (Math.Abs(kingSquare.File - piece.Square.File) <= 3 && Math.Abs(kingSquare.Rank - piece.Square.Rank) <= 3)
             {
                 pieceValue += 10;
-            }
-            // Rooks and pawns better in end game
-            if (piece.IsPawn || piece.IsRook)
-            {
-                pieceValue += board.PlyCount / 4;
             }
             return pieceValue;
         }

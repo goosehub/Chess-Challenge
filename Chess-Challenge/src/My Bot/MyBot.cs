@@ -5,15 +5,19 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Diagnostics;
+using Microsoft.CodeAnalysis;
 
 public class MyBot : IChessBot
 {
     int maxDepth = 6;
+    int thinks = 0;
     int[] pieceValues = { 0, 100, 350, 350, 600, 1200, 5000 };
 
     public Move Think(Board board, Timer timer)
     {
-        return BestMove(board, timer, 1, false, false, false).Item1;
+        thinks = 0;
+        Move choice = BestMove(board, timer, 1, false, false, false).Item1;
+        return choice;
     }
 
     public Tuple<Move, int, int> BestMove(Board board, Timer timer, int depth, bool previousMoveWasCheck, bool previousMoveWasCapture, bool previousMoveWasPieceCapture)
@@ -25,18 +29,22 @@ public class MyBot : IChessBot
             return Tuple.Create(new Move(), 0, 0);
         }
         Move moveToPlay = allMoves[0];
+        Move secondChoice = allMoves[0];
         int highestValueMove = -10000;
         int depthValue = 2;
         PieceList[] pieces = board.GetAllPieceLists();
         int evaluation = boardEval(board, pieces);
+        thinks++;
 
-        // Sort moves for best candidates first
-        Move[] sortedMoves = allMoves.OrderByDescending(thisMove => rankMoveForSorting(board, thisMove)).ToArray();
-
-        foreach (Move move in sortedMoves)
+        foreach (Move move in allMoves)
         {
             // Get data
             int moveValue = 0;
+            if (board.PlyCount < 10)
+            {
+                Random rng = new();
+                moveValue = rng.Next(5);
+            }
             Piece movingPiece = board.GetPiece(move.StartSquare);
             Piece capturedPiece = board.GetPiece(move.TargetSquare);
             int movingPieceValue = pieceEval(board, movingPiece);
@@ -44,27 +52,29 @@ public class MyBot : IChessBot
             bool losing = evaluation < -200 && board.IsWhiteToMove || evaluation > 200 && !board.IsWhiteToMove;
             bool winning = evaluation > 200 && board.IsWhiteToMove || evaluation < -200 && !board.IsWhiteToMove;
 
-            // Start with short term eval changes
-            moveValue = (evaluationAfterMove(board, move, timer) - evaluation) * (board.IsWhiteToMove ? 1 : -1);
+            Tuple<int, bool, bool, bool, bool> futureInfo = lookAhead(board, move);
+            int nextEvaulation = futureInfo.Item1;
+            bool isDraw = futureInfo.Item2;
+            bool isCheck = futureInfo.Item3;
+            bool isMate = futureInfo.Item4;
+            bool isDefended = futureInfo.Item5;
 
-            // Open with king pawn then knights if reasonable
-            if (board.PlyCount <= 1 && move.StartSquare.File == 4 && move.TargetSquare.Rank != 2 && move.TargetSquare.Rank != 5)
-            {
-                moveValue += 50;
-            }
-            if (depth == 1 && board.PlyCount <= 6 && movingPiece.IsKnight && (move.TargetSquare.File == 2 || move.TargetSquare.File == 5))
+            // Start with short term eval changes
+            moveValue += (nextEvaulation - evaluation) * (board.IsWhiteToMove ? 1 : -1);
+
+            // Open with knights if reasonable
+            if (board.PlyCount <= 4 && movingPiece.IsKnight)
             {
                 moveValue += 10;
             }
 
             // If you see checkmate, that's probably good
-            if (MoveIsCheckmate(board, move))
+            if (isMate)
             {
-                moveValue += 9000;
+                moveValue += 99000;
             }
 
             // Check, it might lead to mate, less so in end game
-            bool isCheck = MoveIsCheck(board, move);
             if (isCheck)
             {
                 moveValue += board.PlyCount <= 60 ? 20 : 10;
@@ -94,9 +104,9 @@ public class MyBot : IChessBot
             }
 
             // Draw value depends on winning vs losing
-            if (MoveIsDraw(board, move))
+            if (isDraw)
             {
-                moveValue += losing ? 1000 : -100;
+                moveValue += losing ? 100 : -100;
             }
 
             // Encourage capture if winning
@@ -106,7 +116,7 @@ public class MyBot : IChessBot
             }
 
             // Prefer to move to defended squares
-            if (MoveIsDefended(board, move))
+            if (isDefended)
             {
                 moveValue += 5;
             }
@@ -117,7 +127,7 @@ public class MyBot : IChessBot
             // Push pawns in end game
             if (movingPiece.IsPawn && board.PlyCount >= 60)
             {
-                moveValue += 10;
+                moveValue += 20;
             }
 
             // Lazy depth check by avoiding staying on or targeting attacked squares at end of depth
@@ -129,27 +139,24 @@ public class MyBot : IChessBot
 
             // If the move is promising and time permits, consider the future carefully
             depthValue = 0;
-            bool decentMove = moveValue + 100 > highestValueMove;
-            bool bestMove = moveValue > highestValueMove;
+            bool recentChecks = isCheck || previousMoveWasCheck;
             bool pieceCapture = move.IsCapture && !capturedPiece.IsPawn;
             if (
                 depth <= maxDepth &&
+                (depth < 2 || moveValue + 200 > highestValueMove || recentChecks || move.IsCapture || previousMoveWasCapture) &&
                 (depth < 3 || board.PlyCount > 6) &&
                 (depth < 3 || timer.MillisecondsRemaining > 5000) &&
-                (depth < 3 || decentMove) &&
-                (depth < 3 || isCheck || previousMoveWasCheck || (pieceCapture && previousMoveWasPieceCapture)) &&
-                (depth < 5 || isCheck || previousMoveWasCheck)
+                (depth < 3 || moveValue + 200 > highestValueMove) &&
+                (depth < 3 || recentChecks || pieceCapture || (move.IsCapture && previousMoveWasCapture)) &&
+                (depth < 4 || recentChecks || pieceCapture || previousMoveWasPieceCapture) &&
+                (depth < 5 || (recentChecks && (pieceCapture && previousMoveWasPieceCapture)))
                 )
             {
-                if (depth == maxDepth)
-                {
-                    //Debug.WriteLine(depth);
-                }
                 // Undo lazy depth check, but keep some disincentive
                 if (dangerousSquare)
                 {
                     moveValue += movingPieceValue;
-                    moveValue -= 10;
+                    moveValue -= (movingPieceValue / 20);
                 }
 
                 // See what the future holds
@@ -163,30 +170,22 @@ public class MyBot : IChessBot
             if (moveValue > highestValueMove)
             {
                 highestValueMove = moveValue;
+                secondChoice = moveToPlay;
                 moveToPlay = move;
             }
         }
 
-        String log = board.PlyCount / 2 + " Turn: " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + "-" + highestValueMove + " | Eval: " + evaluation + " | Depth Value: " + depthValue;
+        String log = "Turn: " + (board.PlyCount / 2) +
+            " | Thinks: " + thinks +
+            " | Time: " + (timer.MillisecondsRemaining / 1000) +
+            " | Eval: " + evaluation + 
+            " | " + moveToPlay.MovePieceType.ToString() + " " + moveToPlay.ToString() + 
+            " | Value: " + highestValueMove +
+            " | Depth Value: " + depthValue +
+            " | Second Move " + secondChoice.MovePieceType.ToString() + " " + secondChoice.ToString();
         Debug.WriteLineIf(depth == 1, log);
 
         return Tuple.Create(moveToPlay, highestValueMove, evaluation);
-    }
-
-    // Compare moves for sorting
-    int rankMoveForSorting(Board board, Move move)
-    {
-        // Capturing high value pieces is often a good place to start
-        int capturedPieceValue = pieceEval(board, board.GetPiece(move.TargetSquare));
-        int sortValue = capturedPieceValue;
-
-        // Other signs a move is good
-        if (MoveIsCheck(board, move) || move.IsCastles)
-        {
-            sortValue += 100;
-        }
-
-        return sortValue;
     }
 
     // Get simple board eval
@@ -313,48 +312,16 @@ public class MyBot : IChessBot
     }
 
     // Get evaluation after move is made
-    int evaluationAfterMove(Board board, Move move, Timer timer)
+    public Tuple<int, bool, bool, bool, bool> lookAhead(Board board, Move move)
     {
         board.MakeMove(move);
         PieceList[] pieces = board.GetAllPieceLists();
         int evaluation = boardEval(board, pieces);
-        board.UndoMove(move);
-        return evaluation;
-    }
-
-    // Test if this move gives draw
-    bool MoveIsDraw(Board board, Move move)
-    {
-        board.MakeMove(move);
         bool isDraw = board.IsDraw();
-        board.UndoMove(move);
-        return isDraw;
-    }
-
-    // Test if this move gives check
-    bool MoveIsCheck(Board board, Move move)
-    {
-        board.MakeMove(move);
         bool isCheck = board.IsInCheck();
-        board.UndoMove(move);
-        return isCheck;
-    }
-
-    // Test if this move gives checkmate
-    bool MoveIsCheckmate(Board board, Move move)
-    {
-        board.MakeMove(move);
         bool isMate = board.IsInCheckmate();
-        board.UndoMove(move);
-        return isMate;
-    }
-
-    // Test if this move goes to defended square
-    bool MoveIsDefended(Board board, Move move)
-    {
-        board.MakeMove(move);
         bool isDefended = board.SquareIsAttackedByOpponent(move.TargetSquare);
         board.UndoMove(move);
-        return isDefended;
+        return Tuple.Create(evaluation, isDraw, isCheck, isMate, isDefended);
     }
 }
