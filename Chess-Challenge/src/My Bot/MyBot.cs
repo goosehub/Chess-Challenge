@@ -106,7 +106,7 @@ public class MyBot : IChessBot
             // Draw value depends on winning vs losing
             if (isDraw)
             {
-                moveValue += losing ? 100 : -100;
+                moveValue += losing ? 500 : -500;
             }
 
             // Encourage capture if winning
@@ -156,7 +156,7 @@ public class MyBot : IChessBot
                 if (dangerousSquare)
                 {
                     moveValue += movingPieceValue;
-                    moveValue -= (movingPieceValue / 20);
+                    moveValue -= (movingPieceValue / 100);
                 }
 
                 // See what the future holds
