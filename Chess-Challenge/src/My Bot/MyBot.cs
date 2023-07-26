@@ -26,12 +26,7 @@ public class MyBot : IChessBot
         Tuple<Move, int> choice = BestMove(board, timer, 1, false, false, false);
         string log = "Turn:"+(board.PlyCount / 2)+"|Time:" +(timer.MillisecondsRemaining / 1000)+ "|"+choice.Item1.MovePieceType.ToString()+" "+choice.Item1.ToString()+"|Eval:"+((double)choice.Item2/100);
         Debug.WriteLine(log);
-        Debug.WriteLine("1 - " + thinks[0]);
-        Debug.WriteLine("2 - " + thinks[1]);
-        Debug.WriteLine("3 - " + thinks[2]);
-        Debug.WriteLine("4 - " + thinks[3]);
-        Debug.WriteLine("5 - " + thinks[4]);
-        Debug.WriteLine("6 - " + thinks[5]);
+        Debug.WriteLine("Depth | 2: - " + thinks[1] + " | 3: - " + thinks[2] + " | 4: - " + thinks[3] + " | 5: - " + thinks[4] + " | 6: - " + thinks[5]);
         return choice.Item1;
     }
 
@@ -85,7 +80,7 @@ public class MyBot : IChessBot
                 (depth < 3 || timer.MillisecondsRemaining > 8000) &&
                 (depth < 3 || (whiteToMove ? moveEvaluation + 200 > bestEvaluation : moveEvaluation - 200 < bestEvaluation)) &&
                 (depth < 3 || recentChecks || pieceCapture || (move.IsCapture && previousMoveWasPieceCapture)) &&
-                (depth < 4 || timer.MillisecondsElapsedThisTurn < 2000) &&
+                (depth < 4 || timer.MillisecondsElapsedThisTurn < timer.MillisecondsRemaining / 30) &&
                 (depth < 4 || (whiteToMove ? moveEvaluation > bestEvaluation : moveEvaluation < bestEvaluation)) &&
                 (depth < 5 || (recentChecks && pieceCapture && previousMoveWasPieceCapture))
                 )
@@ -219,9 +214,9 @@ public class MyBot : IChessBot
             }
         }
         // Get your pieces out
-        if (board.PlyCount < 16 && (piece.IsKnight || piece.IsBishop) && piece.Square.Rank == (piece.IsWhite ? 0 : 7))
+        if (board.PlyCount < 20 && (piece.IsKnight || piece.IsBishop) && piece.Square.Rank == (piece.IsWhite ? 0 : 7))
         {
-            pieceValue -= 80;
+            pieceValue -= 100;
         }
         // King
         if (piece.IsKing)
