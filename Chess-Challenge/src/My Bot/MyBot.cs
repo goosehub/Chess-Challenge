@@ -7,7 +7,6 @@ using System.Linq;
 using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Raylib_cs;
-using ChessChallenge.Chess;
 
 public class MyBot : IChessBot
 {
