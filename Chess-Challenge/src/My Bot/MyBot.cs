@@ -7,20 +7,32 @@ using System.Linq;
 using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Raylib_cs;
+using ChessChallenge.Chess;
 
 public class MyBot : IChessBot
 {
     int maxDepth = 6;
-    int thinks = 0;
+    int[] thinks = {0, 0, 0, 0, 0, 0, 0, 0};
     int[] pieceValues = { 0, 100, 350, 350, 600, 1200, 5000 };
 
     public Move Think(Board board, Timer timer)
     {
-        thinks = 0;
+        thinks[0] = 0;
+        thinks[1] = 0;
+        thinks[2] = 0;
+        thinks[3] = 0;
+        thinks[4] = 0;
+        thinks[5] = 0;
         //return BestMove(board, timer, 1, false, false, false).Item1;
         Tuple<Move, int> choice = BestMove(board, timer, 1, false, false, false);
-        string log = "Turn:"+(board.PlyCount / 2)+" | "+choice.Item1.MovePieceType.ToString()+" "+choice.Item1.ToString()+" | Eval:"+((double)choice.Item2/100)+" | Time:"+(timer.MillisecondsRemaining / 1000)+" | Thinks:"+thinks;
+        string log = "Turn:"+(board.PlyCount / 2)+"|Time:" +(timer.MillisecondsRemaining / 1000)+ "|"+choice.Item1.MovePieceType.ToString()+" "+choice.Item1.ToString()+"|Eval:"+((double)choice.Item2/100);
         Debug.WriteLine(log);
+        Debug.WriteLine("1 - " + thinks[0]);
+        Debug.WriteLine("2 - " + thinks[1]);
+        Debug.WriteLine("3 - " + thinks[2]);
+        Debug.WriteLine("4 - " + thinks[3]);
+        Debug.WriteLine("5 - " + thinks[4]);
+        Debug.WriteLine("6 - " + thinks[5]);
         return choice.Item1;
     }
 
@@ -45,18 +57,14 @@ public class MyBot : IChessBot
         return sortValue;
     }
 
-    public Tuple<Move, int> BestMove(Board board, Timer timer, int depth, bool previousMoveWasCheck, bool previousMoveWasCapture, bool previousMoveWasPieceCapture)
+    public Tuple<Move, int> BestMove(Board board, Timer timer, int depth, bool previousMoveWasCheck, bool previousMoveWasPieceCapture, bool previousMoveWasQueenAttacked)
     {
-        // Prepare to do the loop de loop
-        if (depth == maxDepth - 2)
-        {
-            thinks++;
-        }
+        // Get and sort moves for best candidates first
         Move[] allMoves = board.GetLegalMoves();
-
-        // Sort moves for best candidates first
         Move[] sortedMoves = allMoves.OrderByDescending(thisMove => rankMoveForSorting(board, thisMove)).ToArray();
 
+        // Prepare to do the loop de loop
+        thinks[depth - 1]++;
         Move moveToPlay = allMoves[0];
         bool whiteToMove = board.IsWhiteToMove;
         int bestEvaluation = whiteToMove ? -99999 : 99999;
@@ -64,11 +72,13 @@ public class MyBot : IChessBot
         foreach (Move move in sortedMoves)
         {
             board.MakeMove(move);
-            int moveEvaluation = boardEval(board);
+            PieceList[] pieces = board.GetAllPieceLists();
+            int moveEvaluation = boardEval(board, pieces, depth);
             Piece movingPiece = board.GetPiece(move.StartSquare);
             Piece capturedPiece = board.GetPiece(move.TargetSquare);
             bool recentChecks = board.IsInCheck() || previousMoveWasCheck;
             bool pieceCapture = move.IsCapture && !capturedPiece.IsPawn;
+            bool queenAttacked = board.SquareIsAttackedByOpponent(pieces[Convert.ToInt32(board.IsWhiteToMove)].FirstOrDefault(x => x.IsQueen).Square);
 
             // Consider the future carefully
             if (
@@ -77,16 +87,17 @@ public class MyBot : IChessBot
                 (depth < 3 || (whiteToMove ? moveEvaluation + 200 > bestEvaluation : moveEvaluation - 200 < bestEvaluation)) &&
                 (depth < 3 || recentChecks || pieceCapture || (move.IsCapture && previousMoveWasPieceCapture)) &&
                 (depth < 4 || (whiteToMove ? moveEvaluation > bestEvaluation : moveEvaluation < bestEvaluation)) &&
+                (depth < 5 || timer.MillisecondsElapsedThisTurn < 1000) &&
                 (depth < 5 || (recentChecks && pieceCapture && previousMoveWasPieceCapture))
                 )
             {
-                moveEvaluation = BestMove(board, timer, depth + 1, board.IsInCheck(), move.IsCapture, pieceCapture).Item2;
+                moveEvaluation = BestMove(board, timer, depth + 1, board.IsInCheck(), pieceCapture, queenAttacked).Item2;
             }
 
             // Castling is outside evaluation
             if (move.IsCastles)
             {
-                moveEvaluation += whiteToMove ? 100 : -100;
+                moveEvaluation += whiteToMove ? 80 : -80;
             }
             else if (board.PlyCount <= 16 && movingPiece.IsKing || movingPiece.IsRook)
             {
@@ -94,7 +105,7 @@ public class MyBot : IChessBot
             }
 
             // Use the best outcome
-            if ((whiteToMove && moveEvaluation > bestEvaluation) || (!whiteToMove && moveEvaluation < bestEvaluation))
+            if (whiteToMove ? moveEvaluation > bestEvaluation : moveEvaluation < bestEvaluation)
             {
                 bestEvaluation = moveEvaluation;
                 moveToPlay = move;
@@ -106,15 +117,14 @@ public class MyBot : IChessBot
     }
 
     // Get simple board eval
-    int boardEval(Board board)
+    int boardEval(Board board, PieceList[] pieces, int depth)
     {
         int eval = 0;
-        PieceList[] pieces = board.GetAllPieceLists();
 
-        // Checkmate suckers
+        // Checkmate, better when closer
         if (board.IsInCheckmate())
         {
-            return board.IsWhiteToMove ? -88888 : 88888;
+            return board.IsWhiteToMove ? -80000 + depth : 80000 - depth;
         }
 
         // Draw
@@ -199,7 +209,7 @@ public class MyBot : IChessBot
                 }
             }
             // Pawns better if in front of their King
-            if (Math.Abs(piece.Square.File - ownKingSquare.File) <= 1 && Math.Abs(piece.Square.Rank - ownKingSquare.Rank) <= 2)
+            if (Math.Abs(piece.Square.File - ownKingSquare.File) <= 1 && Math.Abs(piece.Square.Rank - ownKingSquare.Rank) <= 1)
             {
                 pieceValue += 30;
             }
@@ -239,9 +249,9 @@ public class MyBot : IChessBot
             }
         }
         // Queen should stay out of danger
-        if (piece.IsQueen && piece.IsWhite == board.IsWhiteToMove && board.SquareIsAttackedByOpponent(piece.Square))
+        if (piece.IsQueen && board.SquareIsAttackedByOpponent(piece.Square))
         {
-            pieceValue -= 50;
+            pieceValue += piece.IsWhite ? -50 : 50;
         }
         // Enjoy the center
         if (!piece.IsKing || board.PlyCount > 80)
