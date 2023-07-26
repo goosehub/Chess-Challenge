@@ -82,11 +82,11 @@ public class MyBot : IChessBot
             // Consider the future carefully
             if (
                 depth <= maxDepth && !board.IsDraw() && !board.IsInCheckmate() &&
-                (depth < 3 || timer.MillisecondsRemaining > 10000) &&
+                (depth < 3 || timer.MillisecondsRemaining > 8000) &&
                 (depth < 3 || (whiteToMove ? moveEvaluation + 200 > bestEvaluation : moveEvaluation - 200 < bestEvaluation)) &&
                 (depth < 3 || recentChecks || pieceCapture || (move.IsCapture && previousMoveWasPieceCapture)) &&
+                (depth < 4 || timer.MillisecondsElapsedThisTurn < 2000) &&
                 (depth < 4 || (whiteToMove ? moveEvaluation > bestEvaluation : moveEvaluation < bestEvaluation)) &&
-                (depth < 5 || timer.MillisecondsElapsedThisTurn < 1000) &&
                 (depth < 5 || (recentChecks && pieceCapture && previousMoveWasPieceCapture))
                 )
             {
@@ -171,6 +171,11 @@ public class MyBot : IChessBot
         int pieceValue = pieceValues[(int)piece.PieceType];
         Square ownKingSquare = board.GetKingSquare(piece.IsWhite);
         Square otherKingSquare = board.GetKingSquare(!piece.IsWhite);
+        // In general, better when not attacked
+        if (!piece.IsPawn && !piece.IsKing && board.SquareIsAttackedByOpponent(piece.Square))
+        {
+            pieceValue -= pieceValue / 20;
+        }
         // Pawns
         if (piece.IsPawn)
         {
@@ -182,15 +187,15 @@ public class MyBot : IChessBot
             // Pawns better closer to promotion
             if (piece.Square.Rank == (piece.IsWhite ? 4 : 3))
             {
-                pieceValue += 30;
+                pieceValue += 10;
             }
             if (piece.Square.Rank == (piece.IsWhite ? 5 : 2))
             {
-                pieceValue += 100;
+                pieceValue += 50;
             }
             if (piece.Square.Rank == (piece.IsWhite ? 6 : 1))
             {
-                pieceValue += 500;
+                pieceValue += 300;
             }
             // Center pawns good
             if ((piece.IsWhite && piece.Square.File == 3) || (!piece.IsWhite && piece.Square.File == 4))
