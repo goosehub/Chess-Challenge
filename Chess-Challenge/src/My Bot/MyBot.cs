@@ -133,7 +133,7 @@ public class MyBot : IChessBot
             // Bishop Pair
             if ((int)pieceList.TypeOfPieceInList == 3 && pieceList.Count == 2)
             {
-                eval += 50;
+                eval += pieceList.IsWhitePieceList ? 50 : -50;
             }
             foreach (Piece piece in pieceList)
             {
@@ -144,12 +144,12 @@ public class MyBot : IChessBot
                         // Doubled pawns bad
                         if (lastPawn.Square.File == piece.Square.File)
                         {
-                            eval -= 10;
+                            eval += pieceList.IsWhitePieceList ? -10 : 10;
                         }
                         // Connected pawns good
                         if (Math.Abs(lastPawn.Square.File - piece.Square.File) == 1 && Math.Abs(lastPawn.Square.Rank - piece.Square.Rank) == 1)
                         {
-                            eval += 10;
+                            eval += pieceList.IsWhitePieceList ? 10 : -10;
                         }
                     }
                     lastPawn = piece;
@@ -174,7 +174,7 @@ public class MyBot : IChessBot
         // Pawns
         if (piece.IsPawn)
         {
-            // Move in early game
+            // Move center pawns in early game
             if (board.PlyCount < 10 && (piece.Square.File == 3 || piece.Square.File == 4) && (piece.Square.Rank < 2 || piece.Square.Rank > 5))
             {
                 pieceValue -= 60;
@@ -246,11 +246,6 @@ public class MyBot : IChessBot
             {
                 pieceValue -= 30;
             }
-        }
-        // Queen should stay out of danger
-        if (piece.IsQueen && board.SquareIsAttackedByOpponent(piece.Square))
-        {
-            pieceValue += piece.IsWhite ? -50 : 50;
         }
         // Enjoy the center
         if (!piece.IsKing || board.PlyCount > 80)
