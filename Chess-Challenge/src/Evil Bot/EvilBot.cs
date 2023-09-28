@@ -21,7 +21,7 @@ namespace ChessChallenge.Example
             thinks[3] = 0;
             thinks[4] = 0;
             thinks[5] = 0;
-            //return BestMove(board, timer, 1, false, false, false).Item1;
+            return BestMove(board, timer, 1, false, false, false).Item1;
             Tuple<Move, int> choice = BestMove(board, timer, 1, false, false, false);
             string log = "Turn:" + (board.PlyCount / 2) + "|Time:" + (timer.MillisecondsRemaining / 1000) + "|" + choice.Item1.MovePieceType.ToString() + " " + choice.Item1.ToString() + "|Eval:" + ((double)choice.Item2 / 100);
             Debug.WriteLine(log);
