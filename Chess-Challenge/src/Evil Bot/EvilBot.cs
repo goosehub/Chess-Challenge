@@ -15,7 +15,7 @@ namespace ChessChallenge.Example
 
         public Move Think(Board board, Timer timer)
         {
-            if (board.PlyCount <= 2)
+            if (board.PlyCount <= 4)
             {
                 Move[] allMoves = board.GetLegalMoves();
                 Random rng = new();
@@ -191,7 +191,7 @@ namespace ChessChallenge.Example
                 pieceValue -= 30;
             }
             // King should approach other king in end game
-            if (piece.IsKing && (board.PlyCount > 80 && Math.Abs(file - otherKingFile) <= 2 && Math.Abs(rank - otherKingRank) <= 2))
+            if (piece.IsKing && (board.PlyCount > 60 && Math.Abs(file - otherKingFile) <= 2 && Math.Abs(rank - otherKingRank) <= 2))
             {
                 pieceValue += 30;
             }

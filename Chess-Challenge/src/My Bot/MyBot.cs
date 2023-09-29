@@ -7,7 +7,7 @@ public class MyBot : IChessBot
 {
     int maxDepth = 5;
     //int[] thinks = {0, 0, 0, 0, 0, 0, 0};
-    int[] pieceValues = { 0, 100, 400, 420, 600, 1200, 5000 };
+    int[] pieceValues = { 0, 100, 350, 350, 600, 1200, 5000 };
 
     public Move Think(Board board, Timer timer)
     {
